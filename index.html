@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>习惯打卡</title>
+<style>
+  /* 设计令牌：纸白 + 近黑 + 墨绿，绿色只用于「完成」语义 */
+  :root {
+    --paper: #f5f6f4;
+    --sheet: #ffffff;
+    --ink: #191d1f;
+    --ink-2: #5c6569;
+    --ink-3: #8b9498;
+    --rule: rgba(25, 29, 31, .10);
+    --rule-soft: rgba(25, 29, 31, .07);
+    --row-hover: rgba(25, 29, 31, .035);
+    --accent: #0e6e52;
+    --accent-strong: #0a5a43;
+    --accent-soft: rgba(14, 110, 82, .10);
+    --accent-tint: #e9f2ee;
+    --danger: #b23a33;
+    --danger-soft: rgba(178, 58, 51, .10);
+    --lv0: rgba(14, 110, 82, .16);
+    --lv1: rgba(14, 110, 82, .34);
+    --lv2: rgba(14, 110, 82, .54);
+    --lv3: rgba(14, 110, 82, .76);
+    --lv4: #0e6e52;
+    --none: rgba(25, 29, 31, .07);
+    --radius: 14px;
+    --font: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+            "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    --shadow-sheet: 0 1px 1px rgba(25, 29, 31, .04), 0 20px 36px -24px rgba(25, 29, 31, .25);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    min-height: 100vh;
+    padding: 34px 20px 56px;
+    background-color: var(--paper);
+    /* 方格纸的细点纹理，代替装饰性色块 */
+    background-image: radial-gradient(rgba(25, 29, 31, .055) 1px, transparent 1.1px);
+    background-size: 22px 22px;
+    background-attachment: fixed;
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .wrap {
+    width: 100%;
+    max-width: 560px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  .head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 2px;
+  }
+
+  .head h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: .01em;
+  }
+
+  .head .date {
+    margin: 0;
+    font-size: 13px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 主表：今天这一张打卡表 */
+  .sheet {
+    --pad: 20px;
+    background: var(--sheet);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sheet);
+    padding: 0 var(--pad) var(--pad);
+    overflow: hidden;
+  }
+
+  /* 历史区：只有一条顶部规线，不重复白卡和阴影 */
+  .ledger {
+    border-top: 1px solid var(--rule);
+    padding-top: 16px;
+  }
+
+  .sheet + .ledger { margin-top: 10px; }
+
+  .ledger-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .ledger-head h2 {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    color: var(--ink-2);
+  }
+
+  .hint {
+    font-size: 12px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- 今日进度 ---------- */
+  .sheet-top {
+    margin: 0 calc(var(--pad) * -1);
+    padding: 18px var(--pad) 16px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .progress-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .progress-text { font-size: 15px; color: var(--ink-2); }
+
+  .progress-text .num {
+    font-size: 30px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: -.01em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .progress-pct {
+    font-size: 13px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .bar-track {
+    margin-top: 12px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(25, 29, 31, .08);
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    width: 0;
+    border-radius: 2px;
+    background: var(--accent);
+    transition: width .32s cubic-bezier(.22, .61, .36, 1);
+  }
+
+  /* 全天完成：把已有的完成文案压成一枚印章 */
+  .progress-top.is-done {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .progress-top.is-done .progress-pct { display: none; }
+
+  .progress-top.is-done .progress-text {
+    display: inline-block;
+    padding: 5px 13px 6px;
+    border: 1.5px solid var(--accent);
+    border-radius: 7px;
+    color: var(--accent);
+    font-weight: 600;
+    letter-spacing: .05em;
+    transform: rotate(-1.4deg);
+    animation: stamp-in .28s cubic-bezier(.2, .85, .3, 1) both;
+  }
+
+  @keyframes stamp-in {
+    from { opacity: .2; transform: rotate(-8deg) scale(1.1); filter: blur(1.4px); }
+    to { opacity: 1; transform: rotate(-1.4deg) scale(1); filter: blur(0); }
+  }
+
+  /* ---------- 习惯列表：整行命中 + 规线分隔的表格 ---------- */
+  .habits {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .habit {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 calc(var(--pad) * -1);
+    padding: 0 var(--pad);
+    border-top: 1px solid var(--rule);
+    transition: background .15s ease;
+  }
+
+  .habits > .habit:first-child { border-top: 0; }
+
+  .habit:hover { background: var(--row-hover); }
+
+  .habit-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    padding: 8px 0;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .habit-emoji {
+    flex: 0 0 auto;
+    width: 22px;
+    font-size: 17px;
+    line-height: 1;
+    text-align: center;
+  }
+
+  .habit-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
+    color: var(--ink);
+    word-break: break-word;
+    transition: color .15s ease;
+  }
+
+  .habit.done .habit-name {
+    color: var(--ink-3);
+    text-decoration: line-through;
+    text-decoration-color: rgba(25, 29, 31, .28);
+    text-decoration-thickness: 1px;
+  }
+
+  .check {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    border: 1.5px solid rgba(25, 29, 31, .18);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .16s ease, border-color .16s ease;
+  }
+
+  .check::after {
+    content: "";
+    width: 5px;
+    height: 10px;
+    margin-top: -2px;
+    border-right: 2px solid #fff;
+    border-bottom: 2px solid #fff;
+    opacity: 0;
+    transform: rotate(45deg) scale(.4);
+    transition: transform .18s cubic-bezier(.2, .85, .3, 1), opacity .12s ease;
+  }
+
+  .habit-main:hover .check { border-color: var(--accent); }
+
+  .habit.done .check {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .habit.done .check::after { opacity: 1; transform: rotate(45deg) scale(1); }
+
+  .del {
+    flex: 0 0 auto;
+    min-width: 26px;
+    height: 26px;
+    padding: 0 5px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: rgba(25, 29, 31, .2);
+    font: inherit;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+  }
+
+  .habit:hover .del { color: rgba(25, 29, 31, .38); }
+  .del:hover { background: var(--danger-soft); color: var(--danger); }
+
+  .del.confirming {
+    min-width: 62px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--danger);
+    background: var(--danger-soft);
+    box-shadow: inset 0 0 0 1px rgba(178, 58, 51, .28);
+  }
+
+  .empty {
+    margin: 0;
+    padding: 26px 8px 22px;
+    text-align: center;
+    color: var(--ink-3);
+    font-size: 14px;
+  }
+
+  /* ---------- 添加表单 ---------- */
+  .add-form {
+    margin: 0 calc(var(--pad) * -1);
+    padding: 16px var(--pad) 0;
+    border-top: 1px solid var(--rule);
+  }
+
+  .add-row { display: flex; gap: 8px; }
+
+  .add-row input {
+    flex: 1;
+    min-width: 0;
+    height: 42px;
+    padding: 0 12px;
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    background: var(--sheet);
+    font: inherit;
+    font-size: 15px;
+    color: var(--ink);
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+
+  .add-row input::placeholder { color: var(--ink-3); }
+
+  .add-row input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .btn-add {
+    flex: 0 0 auto;
+    height: 42px;
+    padding: 0 18px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s ease, transform .1s ease;
+  }
+
+  .btn-add:hover { background: var(--accent-strong); }
+  .btn-add:active { background: var(--accent-strong); transform: translateY(1px); }
+
+  .emoji-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 10px;
+  }
+
+  .emoji-btn {
+    width: 32px;
+    height: 32px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+  }
+
+  .emoji-btn:hover { background: var(--accent-soft); }
+
+  .emoji-btn.selected {
+    background: var(--accent-tint);
+    border-color: var(--accent);
+  }
+
+  /* ---------- 近 7 天：以一条基线收尾的柱状图 ---------- */
+  .chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    height: 124px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .bar-col {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* 行高 18px 与脚本里为数字预留的 18px 对齐 */
+  .bar-num {
+    font-size: 11px;
+    line-height: 18px;
+    min-height: 18px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .bar-wrap {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .bar {
+    width: 100%;
+    max-width: 28px;
+    border-radius: 5px 5px 2px 2px;
+    background: var(--lv2);
+    transition: height .3s cubic-bezier(.22, .61, .36, 1);
+  }
+
+  .bar.lv0 { background: var(--lv0); }
+  .bar.lv1 { background: var(--lv1); }
+  .bar.lv2 { background: var(--lv2); }
+  .bar.lv3 { background: var(--lv3); }
+  .bar.lv4 { background: var(--lv4); }
+  .bar.none { background: var(--none); }
+
+  .bar-label {
+    font-size: 11px;
+    line-height: 1.3;
+    color: var(--ink-3);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .bar-col.today .bar-label { color: var(--accent); font-weight: 600; }
+
+  /* ---------- 日历热力图：无记录只留一格细边 ---------- */
+  .cal-nav { display: flex; gap: 6px; }
+
+  .cal-nav button {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--ink-2);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease, color .15s ease;
+  }
+
+  .cal-nav button:hover:not(:disabled) {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .cal-nav button:disabled {
+    color: rgba(25, 29, 31, .18);
+    border-color: var(--rule-soft);
+    cursor: default;
+  }
+
+  #cal-title { font-size: 13px; color: var(--ink); }
+
+  .cal-week,
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+  }
+
+  .cal-week { margin-bottom: 8px; }
+
+  .cal-week span {
+    text-align: center;
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+
+  .cell {
+    aspect-ratio: 1 / 1;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: var(--ink-3);
+    background: transparent;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cell.lv0 { background: var(--lv0); }
+  .cell.lv1 { background: var(--lv1); }
+  .cell.lv2 { background: var(--lv2); }
+  .cell.lv3 { background: var(--lv3); color: #fff; }
+  .cell.lv4 { background: var(--lv4); color: #fff; }
+
+  /* 有记录但未满格的日子，日期数字加深一档 */
+  .cell.lv0, .cell.lv1, .cell.lv2 { color: var(--ink-2); }
+
+  .cell.today {
+    box-shadow: inset 0 0 0 1.5px var(--accent);
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  .cell.today.lv3, .cell.today.lv4 { color: #fff; }
+
+  .legend {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 5px;
+    margin-top: 14px;
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+
+  .legend .sw { width: 12px; height: 12px; border-radius: 3px; }
+  .legend .sw.none { background: transparent; box-shadow: inset 0 0 0 1px var(--rule-soft); }
+  .legend .sw.lv0 { background: var(--lv0); }
+  .legend .sw.lv1 { background: var(--lv1); }
+  .legend .sw.lv2 { background: var(--lv2); }
+  .legend .sw.lv3 { background: var(--lv3); }
+  .legend .sw.lv4 { background: var(--lv4); }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* 输入框用自己的绿色描边作为焦点提示，避免双圈 */
+  .add-row input:focus-visible { outline: none; }
+
+  @media (max-width: 420px) {
+    body { padding: 22px 14px 40px; font-size: 14px; }
+    .wrap { gap: 18px; }
+    .sheet { --pad: 16px; }
+    .head h1 { font-size: 20px; }
+    .progress-text .num { font-size: 26px; }
+    .habit-main { min-height: 50px; }
+    .chart { height: 106px; gap: 4px; }
+    .bar-num, .bar-label { font-size: 10px; }
+    .cal-week, .cal-grid { gap: 4px; }
+    .cell { font-size: 11px; border-radius: 6px; }
+    .emoji-btn { width: 30px; height: 30px; font-size: 15px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="head">
+    <h1>习惯打卡</h1>
+    <p class="date" id="today-label"></p>
+  </header>
+
+  <section class="sheet">
+    <div class="sheet-top">
+      <div class="progress-top" id="progress-top">
+        <span class="progress-text" id="progress-text"></span>
+        <span class="progress-pct" id="progress-pct"></span>
+      </div>
+      <div class="bar-track" id="progress-track">
+        <div class="bar-fill" id="progress-fill"></div>
+      </div>
+    </div>
+
+    <ul class="habits" id="habit-list"></ul>
+    <p class="empty" id="habit-empty" hidden>还没有习惯，添加一个开始吧 🌱</p>
+
+    <form class="add-form" id="add-form" autocomplete="off">
+      <div class="add-row">
+        <input id="habit-input" type="text" maxlength="20"
+               placeholder="添加一个想坚持的习惯，比如「喝水」" aria-label="习惯名称" />
+        <button type="submit" class="btn-add">添加</button>
+      </div>
+      <div class="emoji-row" id="emoji-row" role="group" aria-label="选择图标"></div>
+    </form>
+  </section>
+
+  <section class="ledger">
+    <div class="ledger-head">
+      <h2>近 7 天</h2>
+      <span class="hint" id="trend-hint"></span>
+    </div>
+    <div class="chart" id="trend-chart"></div>
+  </section>
+
+  <section class="ledger">
+    <div class="ledger-head">
+      <h2 id="cal-title">本月</h2>
+      <div class="cal-nav">
+        <button type="button" id="cal-prev" aria-label="上个月">‹</button>
+        <button type="button" id="cal-next" aria-label="下个月">›</button>
+      </div>
+    </div>
+    <div class="cal-week" id="cal-week"></div>
+    <div class="cal-grid" id="cal-grid"></div>
+    <div class="legend">
+      <span>完成度</span>
+      <span>低</span>
+      <span class="sw none"></span>
+      <span class="sw lv0"></span>
+      <span class="sw lv1"></span>
+      <span class="sw lv2"></span>
+      <span class="sw lv3"></span>
+      <span class="sw lv4"></span>
+      <span>高</span>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var STORAGE_KEY = 'habit-tracker:v1';
+
+  var SEED_HABITS = [
+    { name: '喝水', emoji: '💧' },
+    { name: '运动', emoji: '🏃' },
+    { name: '学习', emoji: '📚' }
+  ];
+
+  /*__PURE_START__*/
+  var WEEKDAY_CN = ['日', '一', '二', '三', '四', '五', '六'];
+
+  var EMOJI_PRESETS = ['💧', '🏃', '💪', '📚', '📖', '😴', '🧘', '🥗', '✍️', '🎯', '🎸', '🧹', '⭐'];
+
+  var EMOJI_RULES = [
+    ['喝水', '💧'], ['补水', '💧'], ['水', '💧'],
+    ['运动', '🏃'], ['跑步', '🏃'], ['散步', '🏃'], ['走路', '🏃'],
+    ['健身', '💪'], ['锻炼', '💪'], ['力量', '💪'],
+    ['学习', '📚'], ['看书', '📚'], ['背单词', '📚'], ['复习', '📚'], ['上课', '📚'],
+    ['读书', '📖'], ['阅读', '📖'],
+    ['睡觉', '😴'], ['早睡', '😴'], ['睡眠', '😴'], ['午休', '😴'],
+    ['冥想', '🧘'], ['瑜伽', '🧘'], ['放松', '🧘'], ['深呼吸', '🧘'],
+    ['吃', '🥗'], ['饮食', '🥗'], ['沙拉', '🥗'], ['蔬菜', '🥗'], ['水果', '🥗'],
+    ['写作', '✍️'], ['日记', '✍️'], ['复盘', '✍️'],
+    ['练琴', '🎸'], ['吉他', '🎸'], ['音乐', '🎸'], ['唱歌', '🎸'],
+    ['计划', '🎯'], ['目标', '🎯'], ['待办', '🎯'],
+    ['打扫', '🧹'], ['整理', '🧹'], ['收拾', '🧹']
+  ];
+
+  // 本地时区的 YYYY-MM-DD（刻意不用 toISOString，避免时区偏移）
+  function dateKey(d) {
+    var y = d.getFullYear();
+    var m = d.getMonth() + 1;
+    var day = d.getDate();
+    return y + '-' + (m < 10 ? '0' + m : m) + '-' + (day < 10 ? '0' + day : day);
+  }
+
+  function todayKey() { return dateKey(new Date()); }
+
+  function addDays(d, n) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  }
+
+  function daysInMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
+
+  function lastNDays(n, ref) {
+    var out = [];
+    for (var i = n - 1; i >= 0; i--) out.push(addDays(ref, -i));
+    return out;
+  }
+
+  // 周一一列的月视图格子，无效位置为 null
+  function monthCells(y, m) {
+    var offset = (new Date(y, m, 1).getDay() + 6) % 7;
+    var total = daysInMonth(y, m);
+    var cells = [];
+    var i;
+    for (i = 0; i < offset; i++) cells.push(null);
+    for (i = 1; i <= total; i++) cells.push(new Date(y, m, i));
+    while (cells.length % 7 !== 0) cells.push(null);
+    return cells;
+  }
+
+  // 当天完成比例；无记录或分母为 0 时返回 null
+  function completionRatio(record) {
+    if (!record || !record.total || record.total <= 0) return null;
+    var ratio = (record.done ? record.done.length : 0) / record.total;
+    if (ratio < 0) return 0;
+    return ratio > 1 ? 1 : ratio;
+  }
+
+  // -1 = 无记录，0 = 0%，1 = 1~33%，2 = 34~66%，3 = 67~99%，4 = 100%
+  // 按四舍五入后的整数百分比分档，这样 1/3 落在第 1 档、2/3 落在第 3 档
+  function levelOf(ratio) {
+    if (ratio === null) return -1;
+    var pct = Math.round(ratio * 100);
+    if (pct <= 0) return 0;
+    if (pct <= 33) return 1;
+    if (pct <= 66) return 2;
+    if (pct < 100) return 3;
+    return 4;
+  }
+
+  function matchEmoji(name) {
+    var n = String(name == null ? '' : name).trim();
+    for (var i = 0; i < EMOJI_RULES.length; i++) {
+      if (n.indexOf(EMOJI_RULES[i][0]) !== -1) return EMOJI_RULES[i][1];
+    }
+    return '⭐';
+  }
+
+  var idCounter = 0;
+
+  // 时间戳 + 自增序号 + 随机串，避免同一毫秒内批量创建时撞 id
+  function newId() {
+    idCounter += 1;
+    return 'h' + Date.now().toString(36) + idCounter.toString(36) +
+           Math.random().toString(36).slice(2, 7);
+  }
+  /*__PURE_END__*/
+
+  // ---------- 数据层 ----------
+  var state = load();
+
+  function seed() {
+    var habits = SEED_HABITS.map(function (h, i) {
+      return { id: newId(), name: h.name, emoji: h.emoji, createdAt: Date.now() + i };
+    });
+    return { version: 1, habits: habits, records: {} };
+  }
+
+  function load() {
+    var raw = null;
+    try { raw = localStorage.getItem(STORAGE_KEY); } catch (e) { raw = null; }
+    if (!raw) return seed();
+    try {
+      var parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return seed();
+      if (!Array.isArray(parsed.habits)) parsed.habits = [];
+      if (!parsed.records || typeof parsed.records !== 'object') parsed.records = {};
+      parsed.version = 1;
+      return parsed;
+    } catch (e) {
+      return seed();
+    }
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) { /* 存储不可用时静默忽略 */ }
+  }
+
+  function recordOf(key) {
+    var rec = state.records[key];
+    return (rec && typeof rec === 'object') ? rec : null;
+  }
+
+  function doneList(key) {
+    var rec = recordOf(key);
+    return (rec && Array.isArray(rec.done)) ? rec.done : [];
+  }
+
+  function isDoneToday(id) {
+    return doneList(todayKey()).indexOf(id) !== -1;
+  }
+
+  function writeToday(done) {
+    state.records[todayKey()] = { done: done, total: state.habits.length };
+  }
+
+  // 习惯数量变化时，让「今天」的分母跟着变化
+  function syncTodayTotal() {
+    var key = todayKey();
+    if (state.records[key]) state.records[key].total = state.habits.length;
+  }
+
+  function toggleHabit(id) {
+    var key = todayKey();
+    var done = doneList(key).slice();
+    var at = done.indexOf(id);
+    if (at === -1) done.push(id); else done.splice(at, 1);
+    writeToday(done);
+    save();
+  }
+
+  // ---------- DOM ----------
+  var el = {
+    todayLabel: document.getElementById('today-label'),
+    progressTop: document.getElementById('progress-top'),
+    progressText: document.getElementById('progress-text'),
+    progressPct: document.getElementById('progress-pct'),
+    progressTrack: document.getElementById('progress-track'),
+    progressFill: document.getElementById('progress-fill'),
+    list: document.getElementById('habit-list'),
+    empty: document.getElementById('habit-empty'),
+    form: document.getElementById('add-form'),
+    input: document.getElementById('habit-input'),
+    emojiRow: document.getElementById('emoji-row'),
+    trendChart: document.getElementById('trend-chart'),
+    trendHint: document.getElementById('trend-hint'),
+    calTitle: document.getElementById('cal-title'),
+    calWeek: document.getElementById('cal-week'),
+    calGrid: document.getElementById('cal-grid'),
+    calPrev: document.getElementById('cal-prev'),
+    calNext: document.getElementById('cal-next')
+  };
+
+  var today = new Date();
+  var calCursor = { y: today.getFullYear(), m: today.getMonth() };
+  var confirmingId = null;
+  var confirmTimer = null;
+  var selectedEmoji = '⭐';
+  var emojiPickedManually = false;
+
+  function weekdayText(d) { return '星期' + WEEKDAY_CN[d.getDay()]; }
+
+  function renderTodayLabel() {
+    var d = new Date();
+    el.todayLabel.textContent = (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + weekdayText(d);
+  }
+
+  function todayDoneCount() {
+    return doneList(todayKey()).filter(function (id) {
+      return state.habits.some(function (h) { return h.id === id; });
+    }).length;
+  }
+
+  function renderProgress() {
+    var total = state.habits.length;
+    var done = todayDoneCount();
+
+    el.progressTop.classList.remove('is-done');
+    el.progressTrack.hidden = false;
+
+    if (total === 0) {
+      el.progressText.textContent = '还没有习惯';
+      el.progressPct.textContent = '';
+      el.progressTrack.hidden = true;
+      return;
+    }
+
+    if (done >= total) {
+      el.progressTop.classList.add('is-done');
+      el.progressText.textContent = '今天全部完成，很稳！🎉';
+      el.progressPct.textContent = total + ' / ' + total;
+      el.progressFill.style.width = '100%';
+      return;
+    }
+
+    el.progressText.textContent = '';
+    var num = document.createElement('span');
+    num.className = 'num';
+    num.textContent = String(done);
+    el.progressText.appendChild(document.createTextNode('已完成 '));
+    el.progressText.appendChild(num);
+    el.progressText.appendChild(document.createTextNode(' / ' + total + ' 项'));
+    el.progressPct.textContent = Math.round((done / total) * 100) + '%';
+    el.progressFill.style.width = (done / total * 100) + '%';
+  }
+
+  function applyRowState(li, id) {
+    var done = isDoneToday(id);
+    li.classList.toggle('done', done);
+    var main = li.querySelector('.habit-main');
+    if (main) main.setAttribute('aria-pressed', done ? 'true' : 'false');
+  }
+
+  function rowFor(habit) {
+    var li = document.createElement('li');
+    li.className = 'habit';
+    li.dataset.id = habit.id;
+
+    var main = document.createElement('button');
+    main.type = 'button';
+    main.className = 'habit-main';
+    main.dataset.action = 'toggle';
+
+    var emoji = document.createElement('span');
+    emoji.className = 'habit-emoji';
+    emoji.textContent = habit.emoji || '⭐';
+
+    var name = document.createElement('span');
+    name.className = 'habit-name';
+    name.textContent = habit.name;
+
+    var check = document.createElement('span');
+    check.className = 'check';
+    check.setAttribute('aria-hidden', 'true');
+
+    main.appendChild(emoji);
+    main.appendChild(name);
+    main.appendChild(check);
+
+    var del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'del';
+    del.dataset.action = 'delete';
+    del.textContent = '×';
+    del.setAttribute('aria-label', '删除习惯「' + habit.name + '」');
+
+    li.appendChild(main);
+    li.appendChild(del);
+    applyRowState(li, habit.id);
+    return li;
+  }
+
+  function renderHabits() {
+    el.list.textContent = '';
+    state.habits.forEach(function (h) { el.list.appendChild(rowFor(h)); });
+    el.empty.hidden = state.habits.length > 0;
+    if (confirmingId) setConfirming(confirmingId);
+  }
+
+  function refreshRowState() {
+    Array.prototype.forEach.call(el.list.children, function (li) {
+      applyRowState(li, li.dataset.id);
+    });
+  }
+
+  function setConfirming(id) {
+    Array.prototype.forEach.call(el.list.querySelectorAll('.del'), function (btn) {
+      var row = btn.closest('.habit');
+      var on = !!(row && row.dataset.id === id);
+      btn.classList.toggle('confirming', on);
+      btn.textContent = on ? '确认删除?' : '×';
+    });
+  }
+
+  function clearConfirming() {
+    confirmingId = null;
+    if (confirmTimer) { clearTimeout(confirmTimer); confirmTimer = null; }
+    setConfirming(null);
+  }
+
+  function askDelete(id) {
+    if (confirmTimer) clearTimeout(confirmTimer);
+    confirmingId = id;
+    setConfirming(id);
+    confirmTimer = setTimeout(function () {
+      confirmingId = null;
+      confirmTimer = null;
+      setConfirming(null);
+    }, 2000);
+  }
+
+  function deleteHabit(id) {
+    clearConfirming();
+    state.habits = state.habits.filter(function (h) { return h.id !== id; });
+    var rec = state.records[todayKey()];
+    if (rec && Array.isArray(rec.done)) {
+      rec.done = rec.done.filter(function (x) { return x !== id; });
+    }
+    syncTodayTotal();
+    save();
+    renderHabits();
+    renderProgress();
+    renderTrend();
+    renderCalendar();
+  }
+
+  function renderEmojiRow() {
+    el.emojiRow.textContent = '';
+    EMOJI_PRESETS.forEach(function (e) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      var on = (e === selectedEmoji);
+      b.className = 'emoji-btn' + (on ? ' selected' : '');
+      b.textContent = e;
+      b.setAttribute('aria-label', '选择图标 ' + e);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.addEventListener('click', function () {
+        selectedEmoji = e;
+        emojiPickedManually = true;
+        renderEmojiRow();
+      });
+      el.emojiRow.appendChild(b);
+    });
+  }
+
+  function renderTrend() {
+    var days = lastNDays(7, new Date());
+    el.trendChart.textContent = '';
+    var sum = 0;
+    var hasAny = false;
+
+    days.forEach(function (d) {
+      var key = dateKey(d);
+      var record = recordOf(key);
+      var ratio = completionRatio(record);
+      var level = levelOf(ratio);
+      var count = doneList(key).length;
+      if (level >= 0) { sum += count; hasAny = true; }
+
+      var col = document.createElement('div');
+      col.className = 'bar-col' + (key === todayKey() ? ' today' : '');
+      col.title = (d.getMonth() + 1) + '月' + d.getDate() + '日 ' +
+                  (level === -1 ? '无记录' : '完成 ' + count + ' / ' + record.total + ' 项');
+
+      var num = document.createElement('span');
+      num.className = 'bar-num';
+      num.textContent = level >= 0 ? String(count) : '';
+
+      var wrap = document.createElement('div');
+      wrap.className = 'bar-wrap';
+      wrap.appendChild(num);
+
+      var bar = document.createElement('div');
+      bar.className = 'bar ' + (level === -1 ? 'none' : 'lv' + level);
+      // 数字占 18px，所以柱子高度用 calc 换算，避免数字被挤出可视区
+      bar.style.height = 'calc((100% - 18px) * ' + (level === -1 ? 0.06 : Math.max(ratio, 0.06)) + ')';
+      wrap.appendChild(bar);
+
+      var label = document.createElement('span');
+      label.className = 'bar-label';
+      label.appendChild(document.createTextNode('周' + WEEKDAY_CN[d.getDay()]));
+      label.appendChild(document.createElement('br'));
+      label.appendChild(document.createTextNode(String(d.getDate())));
+
+      col.appendChild(wrap);
+      col.appendChild(label);
+      el.trendChart.appendChild(col);
+    });
+
+    el.trendHint.textContent = hasAny ? '共完成 ' + sum + ' 项' : '还没有记录';
+  }
+
+  function renderCalendar() {
+    var y = calCursor.y;
+    var m = calCursor.m;
+    el.calTitle.textContent = y + ' 年 ' + (m + 1) + ' 月';
+
+    var now = new Date();
+    el.calNext.disabled = (y === now.getFullYear() && m === now.getMonth());
+
+    el.calWeek.textContent = '';
+    ['一', '二', '三', '四', '五', '六', '日'].forEach(function (w) {
+      var s = document.createElement('span');
+      s.textContent = w;
+      el.calWeek.appendChild(s);
+    });
+
+    el.calGrid.textContent = '';
+    monthCells(y, m).forEach(function (d) {
+      var cell = document.createElement('div');
+      if (!d) {
+        cell.className = 'cell blank';
+        el.calGrid.appendChild(cell);
+        return;
+      }
+      var key = dateKey(d);
+      var record = recordOf(key);
+      var level = levelOf(completionRatio(record));
+      cell.className = 'cell' + (level >= 0 ? ' lv' + level : '') +
+                       (key === todayKey() ? ' today' : '');
+      cell.textContent = String(d.getDate());
+      cell.title = (m + 1) + '月' + d.getDate() + '日 ' +
+                   (level === -1 ? '无记录' : '完成 ' + doneList(key).length + ' / ' + record.total + ' 项');
+      el.calGrid.appendChild(cell);
+    });
+  }
+
+  function renderAll() {
+    renderTodayLabel();
+    renderHabits();
+    renderEmojiRow();
+    renderProgress();
+    renderTrend();
+    renderCalendar();
+  }
+
+  // ---------- 事件 ----------
+  el.list.addEventListener('click', function (ev) {
+    var btn = ev.target.closest('button');
+    if (!btn) return;
+    var row = btn.closest('.habit');
+    if (!row) return;
+    var id = row.dataset.id;
+
+    if (btn.dataset.action === 'delete') {
+      if (confirmingId === id) deleteHabit(id);
+      else askDelete(id);
+      return;
+    }
+
+    if (confirmingId) clearConfirming();
+    toggleHabit(id);
+    applyRowState(row, id);
+    renderProgress();
+    renderTrend();
+    renderCalendar();
+  });
+
+  el.form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var name = el.input.value.trim();
+    if (!name) { el.input.focus(); return; }
+    if (name.length > 20) name = name.slice(0, 20);
+
+    state.habits.push({
+      id: newId(),
+      name: name,
+      emoji: selectedEmoji,
+      createdAt: Date.now()
+    });
+    syncTodayTotal();
+    save();
+
+    el.input.value = '';
+    selectedEmoji = '⭐';
+    emojiPickedManually = false;
+    renderEmojiRow();
+    renderHabits();
+    renderProgress();
+    renderTrend();
+    renderCalendar();
+    el.input.focus();
+  });
+
+  el.input.addEventListener('input', function () {
+    if (emojiPickedManually) return;
+    var next = el.input.value.trim() ? matchEmoji(el.input.value) : '⭐';
+    if (next !== selectedEmoji) {
+      selectedEmoji = next;
+      renderEmojiRow();
+    }
+  });
+
+  el.calPrev.addEventListener('click', function () {
+    calCursor.m -= 1;
+    if (calCursor.m < 0) { calCursor.m = 11; calCursor.y -= 1; }
+    renderCalendar();
+  });
+
+  el.calNext.addEventListener('click', function () {
+    if (el.calNext.disabled) return;
+    calCursor.m += 1;
+    if (calCursor.m > 11) { calCursor.m = 0; calCursor.y += 1; }
+    renderCalendar();
+  });
+
+  // 页面被挂起或切走再回来时（可能已经跨天），刷新与日期相关的视图
+  function refreshOnReturn() {
+    renderProgress();
+    refreshRowState();
+    renderTrend();
+    renderCalendar();
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) refreshOnReturn();
+  });
+  window.addEventListener('focus', refreshOnReturn);
+
+  renderAll();
+  save();
+})();
+</script>
+</body>
+</html>
